@@ -17,7 +17,6 @@
 import { Timestamp } from '../../../src/api/timestamp';
 import { Query } from '../../../src/core/query';
 import { BatchId, ProtoByteString } from '../../../src/core/types';
-import { GarbageCollector } from '../../../src/local/garbage_collector';
 import { MutationQueue } from '../../../src/local/mutation_queue';
 import { Persistence } from '../../../src/local/persistence';
 import { DocumentKeySet } from '../../../src/model/collections';
@@ -32,12 +31,6 @@ import { AnyDuringMigration } from '../../../src/util/misc';
  */
 export class TestMutationQueue {
   constructor(public persistence: Persistence, public queue: MutationQueue) {}
-
-  start(): Promise<void> {
-    return this.persistence.runTransaction('start', 'readonly', txn => {
-      return this.queue.start(txn);
-    });
-  }
 
   checkEmpty(): Promise<boolean> {
     return this.persistence.runTransaction('checkEmpty', 'readonly', txn => {
@@ -174,16 +167,6 @@ export class TestMutationQueue {
       'readwrite-primary',
       txn => {
         return this.queue.removeMutationBatch(txn, batch);
-      }
-    );
-  }
-
-  collectGarbage(gc: GarbageCollector): Promise<DocumentKeySet> {
-    return this.persistence.runTransaction(
-      'garbageCollection',
-      'readwrite-primary',
-      txn => {
-        return gc.collectGarbage(txn);
       }
     );
   }

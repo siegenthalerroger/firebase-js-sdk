@@ -190,6 +190,7 @@ export interface SharedClientState {
 interface MutationMetadataSchema {
   state: MutationBatchState;
   error?: { code: string; message: string }; // Only set when state === 'rejected'
+  updateTimeMs: number;
 }
 
 /**
@@ -260,7 +261,8 @@ export class MutationMetadata {
 
   toWebStorageJSON(): string {
     const batchMetadata: MutationMetadataSchema = {
-      state: this.state
+      state: this.state,
+      updateTimeMs: Date.now() // Modify the existing value to trigger update.
     };
 
     if (this.error) {
@@ -281,6 +283,7 @@ export class MutationMetadata {
 interface QueryTargetStateSchema {
   state: QueryTargetState;
   error?: { code: string; message: string }; // Only set when state === 'rejected'
+  updateTimeMs: number;
 }
 
 /**
@@ -348,7 +351,8 @@ export class QueryTargetMetadata {
 
   toWebStorageJSON(): string {
     const targetState: QueryTargetStateSchema = {
-      state: this.state
+      state: this.state,
+      updateTimeMs: Date.now() // Modify the existing value to trigger update.
     };
 
     if (this.error) {
@@ -369,6 +373,7 @@ export class QueryTargetMetadata {
  */
 interface ClientStateSchema {
   activeTargetIds: number[];
+  updateTimeMs: number;
 }
 
 /**
@@ -503,7 +508,8 @@ export class LocalClientState implements ClientState {
    */
   toWebStorageJSON(): string {
     const data: ClientStateSchema = {
-      activeTargetIds: this.activeTargetIds.toArray()
+      activeTargetIds: this.activeTargetIds.toArray(),
+      updateTimeMs: Date.now() // Modify the existing value to trigger update.
     };
     return JSON.stringify(data);
   }
@@ -526,7 +532,6 @@ export class WebStorageSharedClientState implements SharedClientState {
   private readonly sequenceNumberKey: string;
   private readonly activeClients: { [key: string]: ClientState } = {};
   private readonly storageListener = this.handleWebStorageEvent.bind(this);
-  private readonly escapedPersistenceKey: string;
   private readonly onlineStateKey: string;
   private readonly clientStateKeyRe: RegExp;
   private readonly mutationBatchKeyRe: RegExp;
@@ -543,7 +548,7 @@ export class WebStorageSharedClientState implements SharedClientState {
   constructor(
     private readonly queue: AsyncQueue,
     private readonly platform: Platform,
-    persistenceKey: string,
+    private readonly persistenceKey: string,
     private readonly localClientId: ClientId,
     initialUser: User
   ) {
@@ -555,7 +560,7 @@ export class WebStorageSharedClientState implements SharedClientState {
     }
     // Escape the special characters mentioned here:
     // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
-    this.escapedPersistenceKey = persistenceKey.replace(
+    const escapedPersistenceKey = persistenceKey.replace(
       /[.*+?^${}()|[\]\\]/g,
       '\\$&'
     );
@@ -565,26 +570,20 @@ export class WebStorageSharedClientState implements SharedClientState {
     this.localClientStorageKey = this.toWebStorageClientStateKey(
       this.localClientId
     );
-    this.sequenceNumberKey = `${SEQUENCE_NUMBER_KEY_PREFIX}_${
-      this.escapedPersistenceKey
-    }`;
+    this.sequenceNumberKey = `${SEQUENCE_NUMBER_KEY_PREFIX}_${persistenceKey}`;
     this.activeClients[this.localClientId] = new LocalClientState();
 
     this.clientStateKeyRe = new RegExp(
-      `^${CLIENT_STATE_KEY_PREFIX}_${this.escapedPersistenceKey}_([^_]*)$`
+      `^${CLIENT_STATE_KEY_PREFIX}_${escapedPersistenceKey}_([^_]*)$`
     );
     this.mutationBatchKeyRe = new RegExp(
-      `^${MUTATION_BATCH_KEY_PREFIX}_${
-        this.escapedPersistenceKey
-      }_(\\d+)(?:_(.*))?$`
+      `^${MUTATION_BATCH_KEY_PREFIX}_${escapedPersistenceKey}_(\\d+)(?:_(.*))?$`
     );
     this.queryTargetKeyRe = new RegExp(
-      `^${QUERY_TARGET_KEY_PREFIX}_${this.escapedPersistenceKey}_(\\d+)$`
+      `^${QUERY_TARGET_KEY_PREFIX}_${escapedPersistenceKey}_(\\d+)$`
     );
 
-    this.onlineStateKey = `${ONLINE_STATE_KEY_PREFIX}_${
-      this.escapedPersistenceKey
-    }`;
+    this.onlineStateKey = `${ONLINE_STATE_KEY_PREFIX}_${persistenceKey}`;
 
     // Rather than adding the storage observer during start(), we add the
     // storage observer during initialization. This ensures that we collect
@@ -926,22 +925,18 @@ export class WebStorageSharedClientState implements SharedClientState {
       `Client key cannot contain '_', but was '${clientId}'`
     );
 
-    return `${CLIENT_STATE_KEY_PREFIX}_${
-      this.escapedPersistenceKey
-    }_${clientId}`;
+    return `${CLIENT_STATE_KEY_PREFIX}_${this.persistenceKey}_${clientId}`;
   }
 
   /** Assembles the key for a query state in WebStorage */
   private toWebStorageQueryTargetMetadataKey(targetId: TargetId): string {
-    return `${QUERY_TARGET_KEY_PREFIX}_${
-      this.escapedPersistenceKey
-    }_${targetId}`;
+    return `${QUERY_TARGET_KEY_PREFIX}_${this.persistenceKey}_${targetId}`;
   }
 
   /** Assembles the key for a mutation batch in WebStorage */
   private toWebStorageMutationBatchKey(batchId: BatchId): string {
     let mutationKey = `${MUTATION_BATCH_KEY_PREFIX}_${
-      this.escapedPersistenceKey
+      this.persistenceKey
     }_${batchId}`;
 
     if (this.currentUser.isAuthenticated()) {

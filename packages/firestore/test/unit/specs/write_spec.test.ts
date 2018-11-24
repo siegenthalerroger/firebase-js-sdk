@@ -16,10 +16,10 @@
 
 import { Query } from '../../../src/core/query';
 import { Document } from '../../../src/model/document';
+import { TimerId } from '../../../src/util/async_queue';
 import { Code } from '../../../src/util/error';
 import { doc, path } from '../../util/helpers';
 
-import { TimerId } from '../../../src/util/async_queue';
 import { describeSpec, specTest } from './describe_spec';
 import { client, spec } from './spec_builder';
 import { RpcError } from './spec_rpc_error';
@@ -1337,7 +1337,6 @@ describeSpec('Writes:', [], () => {
       { hasLocalMutations: true }
     );
     const docA = doc('collection/a', 1000, { k: 'a' });
-
     return client(0)
       .expectPrimaryState(true)
       .userSets('collection/a', { k: 'a' })
@@ -1348,6 +1347,9 @@ describeSpec('Writes:', [], () => {
         hasPendingWrites: true,
         fromCache: true
       })
+      .client(0)
+      .expectListen(query)
+      .client(1)
       .stealPrimaryLease()
       .writeAcks('collection/a', 1000, { expectUserCallback: false })
       .watchAcksFull(query, 1000, docA)
@@ -1476,6 +1478,7 @@ describeSpec('Writes:', [], () => {
           acknowledged: ['collection/a']
         })
         .stealPrimaryLease()
+        .expectPrimaryState(true)
         .writeAcks('collection/b', 2000)
         .userListens(query)
         .expectEvents(query, { added: [docA, docB], fromCache: true });
